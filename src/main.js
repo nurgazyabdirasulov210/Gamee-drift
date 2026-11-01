@@ -194,6 +194,8 @@ async function boot() {
     if (!n) { nameInp.value = playerName; return; }
     playerName = net.name = nameInp.value = n;
     save('dd_name', n);
+    document.getElementById('whoName').textContent = n;
+    document.getElementById('avatar').textContent = n[0].toUpperCase();
   });
   nameInp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') nameInp.blur(); });
   showNet();
@@ -283,7 +285,11 @@ async function boot() {
     hud.toast(audio.enabled ? 'Звук включён' : 'Звук выключен');
   };
   const styleBtn = document.getElementById('btnStyle');
-  const showStyle = () => { styleBtn.textContent = 'СТИЛЬ: ' + STYLES[styleName].label; };
+  const showStyle = () => {
+    styleBtn.textContent = 'СТИЛЬ: ' + STYLES[styleName].label;
+    document.getElementById('styleArcade').classList.toggle('on', styleName === 'arcade');
+    document.getElementById('styleDrift').classList.toggle('on', styleName === 'drift');
+  };
   showStyle();
   const toggleStyle = () => {
     styleName = styleName === 'arcade' ? 'drift' : 'arcade';
@@ -311,10 +317,15 @@ async function boot() {
   // Меню
   loadingEl.classList.add('hidden');
   playBtn.classList.remove('hidden');
+  document.getElementById('menu').classList.add('ready');
   let running = false;
   let started = false;
+  let openTab = 'garage';
+  let revertPreview = () => {};
   const menuEl = document.getElementById('menu');
   const start = () => {
+    revertPreview();
+    rig.snap(car);
     menuEl.classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     audio.init();
@@ -328,7 +339,8 @@ async function boot() {
   const openMenu = () => {
     running = false;
     playBtn.textContent = 'ПРОДОЛЖИТЬ';
-    renderShop();
+    renderLobby();
+    document.getElementById('hud').classList.add('hidden');
     menuEl.classList.remove('hidden');
     try { audio.ctx?.suspend(); } catch (e) { /* нет звука */ }
   };
@@ -365,6 +377,7 @@ async function boot() {
     b.className = 'swatch' + (hex === paintHex ? ' on' : '');
     b.style.background = '#' + hex.toString(16).padStart(6, '0');
     b.addEventListener('click', () => {
+      revertPreview();
       paintHex = hex;
       net.paint = hex;
       car.model.paint.color.setHex(hex);
@@ -373,48 +386,112 @@ async function boot() {
     });
     colorsEl.appendChild(b);
   }
-  // Гараж и карты: покупка за очки дрифта
-  const walletEl = document.getElementById('wallet');
-  const shopEl = document.getElementById('shop');
+  // Лобби: листание машин, вкладки, покупки за очки дрифта
+  const $ = (id) => document.getElementById(id);
   const fmt = (n) => n.toLocaleString('ru-RU');
-  const renderShop = () => {
-    walletEl.textContent = '🪙 ' + fmt(Wallet.balance);
-    shopEl.textContent = '';
-    const section = (title, list, kind, current, pick) => {
-      const h = document.createElement('div');
-      h.className = 'slbl'; h.textContent = title;
-      shopEl.appendChild(h);
-      for (const it of list) {
-        const has = owned[kind].has(it.id), sel = it.id === current;
-        const row = document.createElement('div');
-        row.className = 'item' + (sel ? ' sel' : '');
-        const info = document.createElement('div');
-        info.innerHTML = `<b></b><small></small>`;
-        info.firstChild.textContent = it.name; info.lastChild.textContent = it.desc;
-        const btn = document.createElement('button');
-        btn.className = 'ibtn';
-        if (sel) { btn.textContent = 'ВЫБРАНО'; btn.disabled = true; }
-        else if (has) btn.textContent = 'ВЫБРАТЬ';
-        else { btn.textContent = '🪙 ' + fmt(it.price); btn.classList.toggle('poor', Wallet.balance < it.price); }
-        btn.addEventListener('click', () => {
-          if (!has && !buy(kind, it)) { hud.toast(`Не хватает ${fmt(it.price - Wallet.balance)} очков — дрифтуй!`, 'bad'); return; }
-          pick(it);
-          renderShop();
-        });
-        row.append(info, btn);
-        shopEl.appendChild(row);
-      }
-    };
-    section('ГАРАЖ', CARS, 'cars', carDef.id, (c) => {
-      carDef = c; save('dd_car', c.id); car.setSpec(c);
-      paintHex = c.paint; save('dd_paint', String(c.paint)); car.model.paint.color.setHex(c.paint); net.paint = c.paint;
-      colorsEl.querySelectorAll('.swatch').forEach((x) => x.classList.remove('on'));
-      hud.toast(c.name, 'cyan');
-    });
-    section('КАРТЫ', MAPS, 'maps', MAP.id, (m) => { save('dd_map', m.id); location.reload(); });
+  let pIdx = Math.max(0, CARS.findIndex((c) => c.id === carDef.id));
+  const STATS = [['МОЩНОСТЬ', 'power'], ['РАЗГОН', 'force'], ['СЦЕПЛЕНИЕ', 'grip'], ['ИМПУЛЬС', 'boost'], ['ВЕС', 'mass']];
+  const range = {};
+  for (const [, k] of STATS) { const v = CARS.map((c) => c[k]); range[k] = [Math.min(...v), Math.max(...v)]; }
+  $('whoName').textContent = playerName;
+  $('avatar').textContent = playerName[0].toUpperCase();
+  const selectCar = (c) => {
+    carDef = c; save('dd_car', c.id);
+    paintHex = c.paint; save('dd_paint', String(c.paint)); net.paint = c.paint;
+    colorsEl.querySelectorAll('.swatch').forEach((x) => x.classList.remove('on'));
+    hud.toast(c.name, 'cyan');
   };
-  renderShop();
-  document.getElementById('shopToggle').addEventListener('click', () => { shopEl.parentElement.classList.toggle('open'); renderShop(); });
+  const showPreview = () => {
+    const c = CARS[pIdx];
+    car.setSpec(c);
+    car.model.paint.color.setHex(c.id === carDef.id ? paintHex : c.paint);
+  };
+  revertPreview = () => {
+    pIdx = Math.max(0, CARS.findIndex((c) => c.id === carDef.id));
+    car.setSpec(carDef);
+    car.model.paint.color.setHex(paintHex);
+  };
+  const renderMaps = () => {
+    const list = $('mapList');
+    list.textContent = '';
+    for (const m of MAPS) {
+      const has = owned.maps.has(m.id), sel = m.id === MAP.id;
+      const row = document.createElement('div');
+      row.className = 'item' + (sel ? ' sel' : '');
+      const info = document.createElement('div');
+      info.innerHTML = '<b></b><small></small>';
+      info.firstChild.textContent = m.name; info.lastChild.textContent = m.desc;
+      const btn = document.createElement('button');
+      btn.className = 'ibtn';
+      if (sel) { btn.textContent = 'ВЫБРАНО'; btn.disabled = true; }
+      else if (has) btn.textContent = 'ВЫБРАТЬ';
+      else { btn.textContent = '🪙 ' + fmt(m.price); btn.classList.toggle('poor', Wallet.balance < m.price); }
+      btn.addEventListener('click', () => {
+        if (!has && !buy('maps', m)) { hud.toast(`Не хватает ${fmt(m.price - Wallet.balance)} очков — дрифтуй!`, 'bad'); return; }
+        save('dd_map', m.id);
+        location.reload();
+      });
+      row.append(info, btn);
+      list.appendChild(row);
+    }
+  };
+  const renderCar = () => {
+    const c = CARS[pIdx], has = owned.cars.has(c.id), sel = c.id === carDef.id;
+    $('carBrand').textContent = `ГАРАЖ · ${pIdx + 1}/${CARS.length}`;
+    $('carName').textContent = c.name;
+    $('carDesc').textContent = c.desc;
+    const bars = $('statBars');
+    bars.textContent = '';
+    for (const [label, k] of STATS) {
+      const [lo, hi] = range[k];
+      const v = 0.2 + 0.8 * (c[k] - lo) / (hi - lo || 1);
+      const r = document.createElement('div');
+      r.className = 'stat';
+      r.innerHTML = '<span></span><i></i>';
+      r.firstChild.textContent = label;
+      r.lastChild.style.setProperty('--v', (v * 100).toFixed(0) + '%');
+      bars.appendChild(r);
+    }
+    const b = $('carAct');
+    b.className = 'act';
+    b.disabled = sel;
+    if (sel) b.textContent = 'ВЫБРАНО';
+    else if (has) { b.textContent = 'ВЫБРАТЬ'; b.classList.add('pick'); }
+    else { b.textContent = '🪙 КУПИТЬ · ' + fmt(c.price); b.classList.add(Wallet.balance >= c.price ? 'buy' : 'poor'); }
+  };
+  const renderLobby = () => {
+    $('wallet').textContent = fmt(Wallet.balance);
+    renderCar();
+    if (openTab === 'maps') renderMaps();
+  };
+  $('carAct').addEventListener('click', () => {
+    const c = CARS[pIdx];
+    if (!owned.cars.has(c.id) && !buy('cars', c)) { hud.toast(`Не хватает ${fmt(c.price - Wallet.balance)} очков — дрифтуй!`, 'bad'); return; }
+    selectCar(c);
+    showPreview();
+    renderLobby();
+  });
+  const stepCar = (d) => { pIdx = (pIdx + d + CARS.length) % CARS.length; showPreview(); renderLobby(); };
+  $('prevCar').addEventListener('click', () => stepCar(-1));
+  $('nextCar').addEventListener('click', () => stepCar(1));
+  addEventListener('keydown', (e) => {
+    if (running || menuEl.classList.contains('hidden') || e.target.tagName === 'INPUT') return;
+    if (e.code === 'ArrowLeft') stepCar(-1); else if (e.code === 'ArrowRight') stepCar(1);
+  });
+  const sheet = $('sheet');
+  const setTab = (t) => {
+    if (t === openTab && t !== 'garage') t = 'garage';
+    openTab = t;
+    sheet.classList.toggle('hidden', t === 'garage');
+    sheet.dataset.open = t;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
+    renderLobby();
+  };
+  document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  $('styleArcade').addEventListener('click', () => { if (styleName !== 'arcade') toggleStyle(); });
+  $('styleDrift').addEventListener('click', () => { if (styleName !== 'drift') toggleStyle(); });
+  showStyle();
+  renderLobby();
 
   const autoRes = document.getElementById('autoRes');
   autoRes.checked = AUTO_RES;
@@ -451,7 +528,7 @@ async function boot() {
   const zeroInput = { throttle: 0, brake: 0, steer: 0, handbrake: true, boost: false, jump: false };
   let lastCount = -1;
   let jumpLatch = false;
-  let netT = 0, trackFrame = 0;
+  let netT = 0, trackFrame = 0, lobbyA = 0.6;
   const esc = (t) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
   const frame = () => {
@@ -463,7 +540,11 @@ async function boot() {
       input.update(dt);
       if (input.pressed.has('Start')) start();
       input.pressed.clear();
-      rig.update(car, dt);
+      lobbyA += dt * 0.32;
+      const sc = car.spec.scale, dd = 10.8 * sc, cp = car.pos;
+      camera.position.set(cp.x + Math.sin(lobbyA) * dd, cp.y + 2.6 * sc, cp.z + Math.cos(lobbyA) * dd);
+      camera.lookAt(cp.x, cp.y + 0.8, cp.z);
+      if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
       net.update(dt, car, camera.position, true);
       sky.position.copy(camera.position);
       post.render(dt, 0, 0);

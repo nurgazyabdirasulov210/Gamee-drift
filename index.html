@@ -80,44 +80,86 @@
   </div>
 
   <div id="menu">
-    <div class="card">
+    <div id="splash">
       <div class="logo">DUNE<span>DRIFT</span></div>
       <div class="sub">дрифт · гонки · открытая пустыня</div>
       <div id="loading">Генерация мира…</div>
-      <button id="play" class="play hidden">ПОЕХАЛИ</button>
-      <div class="settings">
-        <div class="slbl">ОНЛАЙН</div>
-        <div class="netrow">
-          <input id="playerName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Твоё имя">
-          <label class="chk"><input type="checkbox" id="online"> Играть с другими</label>
+    </div>
+
+    <div id="lobby">
+      <div class="lt">
+        <div class="who">
+          <div id="avatar" class="avatar">Г</div>
+          <div><b id="whoName">Гонщик</b><small id="netStatus"></small></div>
         </div>
-        <div id="netStatus" class="nstat"></div>
-        <div class="slbl" style="margin-top:12px">ГРАФИКА</div>
-        <div id="quality"></div>
-        <label class="chk"><input type="checkbox" id="autoRes"> Снижать разрешение, если тормозит</label>
-        <div class="slbl" style="margin-top:12px">ЦВЕТ МАШИНЫ</div>
-        <div id="colors"></div>
+        <div class="mini-logo">DUNE<span>DRIFT</span></div>
+        <div class="lt-r">
+          <div class="wallet"><span class="coin">🪙</span><b id="wallet">0</b></div>
+          <button class="gear" data-tab="settings" title="Настройки">⚙</button>
+        </div>
       </div>
-      <div class="garage">
-        <button id="shopToggle" class="install">🏁 ГАРАЖ И КАРТЫ · <span id="wallet">🪙 0</span></button>
-        <div class="shopbox"><div id="shop"></div><div class="nstat">Монеты — это очки дрифта. Чем красивее дрифт, тем больше монет.</div></div>
+
+      <div class="carinfo">
+        <div class="brand" id="carBrand">ГАРАЖ · 1/5</div>
+        <div class="cname" id="carName">ДЖИП</div>
+        <div class="cdesc" id="carDesc"></div>
+        <div id="statBars"></div>
+        <button id="carAct" class="act">ВЫБРАНО</button>
       </div>
-      <button id="install" class="install hidden">⬇ УСТАНОВИТЬ НА ТЕЛЕФОН</button>
-      <div id="installHint" class="ihint hidden"></div>
-      <div class="controls desk">
-        <div><b>W / ↑</b> газ</div><div><b>S / ↓</b> тормоз / назад</div>
-        <div><b>A D / ← →</b> руль</div><div><b>ПРОБЕЛ</b> ручник</div>
-        <div><b>SHIFT</b> импульс</div><div><b>J</b> прыжок</div>
-        <div><b>C</b> камера</div><div><b>T</b> на трассу</div>
-        <div><b>N</b> время суток</div><div><b>R</b> сброс машины</div>
-        <div><b>M</b> звук</div><div><b>Мышь</b> обзор (тянуть)</div>
-        <div><b>V</b> стиль: аркада / дрифт</div><div><b>Esc</b> меню</div>
+
+      <button id="prevCar" class="arrow l" aria-label="Предыдущая машина">‹</button>
+      <button id="nextCar" class="arrow r" aria-label="Следующая машина">›</button>
+
+      <div id="sheet" class="hidden">
+        <div class="pane" data-pane="maps">
+          <div class="slbl">КАРТЫ</div>
+          <div id="mapList"></div>
+          <div class="nstat">Монеты — это очки дрифта. Чем красивее дрифт, тем больше монет.</div>
+        </div>
+        <div class="pane" data-pane="tune">
+          <div class="slbl">ЦВЕТ КУЗОВА</div>
+          <div id="colors"></div>
+          <div class="slbl" style="margin-top:16px">СТИЛЬ УПРАВЛЕНИЯ</div>
+          <div class="seg"><button id="styleArcade">АРКАДА</button><button id="styleDrift">ДРИФТ</button></div>
+          <div class="nstat">Аркада — устойчивая езда. Дрифт — задний привод и скользкая корма.</div>
+        </div>
+        <div class="pane" data-pane="settings">
+          <div class="slbl">ИГРОК</div>
+          <div class="netrow">
+            <input id="playerName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Твоё имя">
+            <label class="chk"><input type="checkbox" id="online"> Играть с другими</label>
+          </div>
+          <div class="slbl" style="margin-top:14px">ГРАФИКА</div>
+          <div id="quality"></div>
+          <label class="chk"><input type="checkbox" id="autoRes"> Снижать разрешение, если тормозит</label>
+          <button id="install" class="install hidden">⬇ УСТАНОВИТЬ НА ТЕЛЕФОН</button>
+          <div id="installHint" class="ihint hidden"></div>
+          <div class="slbl" style="margin-top:14px">УПРАВЛЕНИЕ</div>
+          <div class="controls desk">
+            <div><b>W / ↑</b> газ</div><div><b>S / ↓</b> тормоз / назад</div>
+            <div><b>A D / ← →</b> руль</div><div><b>ПРОБЕЛ</b> ручник</div>
+            <div><b>SHIFT</b> импульс</div><div><b>J</b> прыжок</div>
+            <div><b>C</b> камера</div><div><b>T</b> на трассу</div>
+            <div><b>N</b> время суток</div><div><b>R</b> сброс машины</div>
+            <div><b>M</b> звук</div><div><b>V</b> стиль</div>
+            <div><b>Мышь</b> обзор</div><div><b>Esc</b> меню</div>
+          </div>
+          <div class="controls mob">
+            <div>Слева — слайдер руля: свайп ↑ прыжок, ↓ импульс</div>
+            <div>Справа — газ, тормоз, ручник, импульс</div>
+          </div>
+        </div>
       </div>
-      <div class="controls mob">
-        <div>Слева — слайдер руля: свайп ↑ прыжок, ↓ импульс</div>
-        <div>Справа — газ, тормоз, ручник</div>
+
+      <div class="bar">
+        <div class="tabs">
+          <button class="tab on" data-tab="garage"><i>🚗</i>ГАРАЖ</button>
+          <button class="tab" data-tab="maps"><i>🗺</i>КАРТЫ</button>
+          <button class="tab" data-tab="tune"><i>🎨</i>ТЮНИНГ</button>
+          <button class="tab" data-tab="settings"><i>⚙</i>НАСТРОЙКИ</button>
+        </div>
+        <button id="play" class="play hidden">ИГРАТЬ</button>
       </div>
-      <div class="tip">Заносы приносят очки и заряжают импульс. Гребни барханов и трамплины — для полётов.</div>
     </div>
   </div>
 
