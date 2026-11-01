@@ -540,6 +540,10 @@ async function boot() {
       input.update(dt);
       if (input.pressed.has('Start')) start();
       input.pressed.clear();
+      // подвеска и колёса по рельефу — иначе машина в лобби «проваливается» в песок
+      car._computeWheels();
+      car.updateVisual();
+      car.mesh.position.y += 0.07 * car.spec.scale; // протектор шин чуть ниже расчётного радиуса — приподнимаем, чтобы не тонул
       lobbyA += dt * 0.32;
       const sc = car.spec.scale, dd = 10.8 * sc, cp = car.pos;
       camera.position.set(cp.x + Math.sin(lobbyA) * dd, cp.y + 2.6 * sc, cp.z + Math.cos(lobbyA) * dd);
