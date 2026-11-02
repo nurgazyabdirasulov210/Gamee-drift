@@ -201,8 +201,9 @@ class Remote {
   constructor(id, slot, paint) {
     this.id = id;
     this.slot = slot;
-    this.model = buildCarModel(paint);
-    this.mesh = this.model.root;
+    this.model = buildCarModel(paint, 'pickup');
+    this.mesh = new THREE.Group();
+    this.mesh.add(this.model.root);
     this.paint = paint;
     this.name = '';
     this.tag = null;
@@ -222,6 +223,15 @@ class Remote {
   setCar(i) {
     if (i === this.carIdx) return;
     this.carIdx = i;
+    const kind = CARS[i]?.kind || 'pickup';
+    if (kind !== this.model.kind) {
+      const old = this.model, glow = old.headMat.emissiveIntensity;
+      this.mesh.remove(old.root);
+      old.paint.dispose(); old.headMat.dispose(); old.tailMat.dispose();
+      this.model = buildCarModel(this.paint, kind);
+      this.model.headMat.emissiveIntensity = glow;
+      this.mesh.add(this.model.root);
+    }
     this.mesh.scale.setScalar(CARS[i]?.scale || 1);
   }
 
@@ -271,7 +281,7 @@ class Remote {
     this.spinR += sp * (1 + Math.abs(this.slide) * 1.2) * dt;
     for (const w of m.wheels) {
       w.spin.rotation.x = w.front ? this.spinF : this.spinR;
-      w.pivot.position.y = this.grounded ? 0.42 : 0.28;
+      w.pivot.position.y = m.wheelR - (this.grounded ? 0 : 0.14);
       if (w.front) w.pivot.rotation.y = this.steer;
     }
     m.tailMat.emissiveIntensity = this.braking ? 3.5 : 0.6;
@@ -365,7 +375,7 @@ export class Net {
     if (car.grounded) flags |= 1;
     if (car.brake > 0.1 || car.handbrake) flags |= 2;
     if (car.boosting) flags |= 4;
-    flags |= Math.max(0, CARS.findIndex((c) => c.scale === car.spec.scale && c.power === car.spec.power)) << 3;
+    flags |= Math.max(0, CARS.findIndex((c) => c.id === car.spec.id)) << 3;
     this.seq = (this.seq + 1) & 0xffff;
     d.setUint8(0, 1); d.setUint8(1, flags); d.setUint16(2, this.seq, true);
     const f = [car.pos.x, car.pos.y, car.pos.z, q.x, q.y, q.z, q.w, car.vel.x, car.vel.y, car.vel.z,

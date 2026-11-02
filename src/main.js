@@ -19,6 +19,7 @@ import { Post } from './post.js';
 import { HUD, fmtTime } from './hud.js';
 import { Race, DriftScore } from './race.js';
 import { Net, cleanName } from './net.js';
+import { Weather } from './weather.js';
 import { CARS, MAPS, Wallet, owned, buy, selectedMap, selectedCar } from './garage.js';
 
 const PALETTES = {
@@ -50,7 +51,7 @@ if (MAP.k) {
   const tint = new THREE.Color(MAP.tint);
   for (const [name, p] of Object.entries(PALETTES)) {
     const k = MAP.k * (p.night ? 0.4 : 1);
-    for (const key of ['fog', 'horizon', 'ground']) p[key].lerp(tint, k);
+    for (const key of ['fog', 'horizon', 'ground', 'hemiGround']) p[key].lerp(tint, k);
   }
 }
 const TIME_ORDER = ['day', 'sunset', 'night'];
@@ -142,17 +143,18 @@ async function boot() {
   car.setSpec(carDef);
 
   const botDefs = [
-    { color: 0x1f5fbf, hud: '#3b8cff', skill: 0.97 },
-    { color: 0xd23a2a, hud: '#ff5a45', skill: 1.0 },
-    { color: 0x2a2a2e, hud: '#bbbbbb', skill: 0.94 },
+    { color: 0x1f5fbf, hud: '#3b8cff', skill: 0.97, kind: 'rally' },
+    { color: 0xd23a2a, hud: '#ff5a45', skill: 1.0, kind: 'coupe' },
+    { color: 0x2a2a2e, hud: '#bbbbbb', skill: 0.94, kind: 'sports' },
   ];
   const bots = botDefs.map((d, i) => {
-    const b = new Bot(track, terrain, d.color, d.skill, Math.floor((i / botDefs.length) * track.count));
+    const b = new Bot(track, terrain, d.color, d.skill, Math.floor((i / botDefs.length) * track.count), d.kind);
     b.hudColor = d.hud;
     scene.add(b.mesh);
     return b;
   });
 
+  const weather = MAP.biome?.weather ? new Weather(scene, MAP.biome.weather) : null;
   const particles = new Particles(QUALITY.particles, terrain);
   scene.add(particles.mesh);
   const effects = new Effects(particles, tireTracks, terrain);
@@ -222,7 +224,7 @@ async function boot() {
     scene.fog.color.copy(p.fog);
     scene.background.copy(p.fog);
     groundDisk.material.color.copy(p.ground);
-    renderer.toneMappingExposure = p.exposure;
+    renderer.toneMappingExposure = p.exposure * (MAP.exposure ?? 1);
     terrain.uniforms.uSunDir.value.copy(p.sunDir);
     particles.uniforms.uSunDir.value.copy(p.sunDir);
     particles.uniforms.uSunColor.value.copy(p.sun).multiplyScalar(p.sunI / 3.4);
@@ -550,6 +552,7 @@ async function boot() {
       camera.lookAt(cp.x, cp.y + 0.8, cp.z);
       if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
       net.update(dt, car, camera.position, true);
+      weather?.update(dt, camera.position, renderer.domElement.height);
       sky.position.copy(camera.position);
       post.render(dt, 0, 0);
       return;
@@ -700,6 +703,7 @@ async function boot() {
     if (netT > 1) { netT = 0; showNet(); }
     particles.uniforms.uTime.value += dt;
     particles.update(dt, windVel);
+    weather?.update(dt, camera.position, renderer.domElement.height);
     if (!IS_MOBILE || (++trackFrame % 3) === 0) tireTracks.update();
     terrain.uniforms.uTime.value += dt;
     sky.userData.uniforms.uTime.value += dt;

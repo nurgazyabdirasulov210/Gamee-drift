@@ -140,10 +140,10 @@ function findTrackRamps(sh, track, terrain) {
 }
 
 export class Bot {
-  constructor(track, terrain, color, skill, offset) {
+  constructor(track, terrain, color, skill, offset, kind = 'pickup') {
     this.track = track;
     this.terrain = terrain;
-    this.model = buildCarModel(color);
+    this.model = buildCarModel(color, kind);
     this.mesh = this.model.root;
     this.skill = skill;
     this.sh = sharedFor(track);
@@ -604,7 +604,8 @@ export class Bot {
     const sp = this.speed / 0.42;
     this.spinF += sp * dt;
     this.spinR += sp * (1 + Math.abs(this.slide) * 1.2 + (this.accel > 4 ? 0.5 : 0)) * dt;
-    this.droop = damp(this.droop, this.grounded ? 0.42 : 0.28, 12, dt);
+    const wr = this.model.wheelR;
+    this.droop = damp(this.droop, this.grounded ? wr : wr - 0.14, 12, dt);
     for (const w of this.model.wheels) {
       w.spin.rotation.x = w.front ? this.spinF : this.spinR;
       w.pivot.position.y = this.droop;

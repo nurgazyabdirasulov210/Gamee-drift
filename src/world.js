@@ -1,6 +1,7 @@
 // Наполнение открытого мира: лагерь, ветряки, трейлеры, контейнеры, ЛЭП, скалы,
 // сухие деревья, кусты, заборы (разрушаемые), бочки, покрышки, перекати-поле, трамплины.
 import * as THREE from 'three';
+import { selectedMap } from './garage.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, clamp } from './noise.js';
 import { HALF, QUALITY, WIND } from './config.js';
@@ -68,6 +69,8 @@ class SpatialHash {
     return out;
   }
 }
+
+const BIO = selectedMap().biome || {};
 
 export class World {
   constructor(scene, terrain, track, noise) {
@@ -639,7 +642,7 @@ export class World {
     g = mergeVertices(g);
     const pos = g.attributes.position;
     const col = new Float32Array(pos.count * 3);
-    const dark = new THREE.Color(0x8d6a4a), light = new THREE.Color(0xd8b07c), c = new THREE.Color();
+    const dark = new THREE.Color(BIO.rockDark ?? 0x8d6a4a), light = new THREE.Color(BIO.rockLight ?? 0xd8b07c), c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       _v.fromBufferAttribute(pos, i);
       const k = 1 + 0.28 * n.noise(_v.x * 1.3 + seed, _v.y * 1.3 + _v.z * 0.7)
@@ -664,7 +667,7 @@ export class World {
     for (let i = 0; i < variants; i++) geos.push(this.makeRockGeo(i * 13.7));
     const items = [];
     // Скальные гряды
-    for (let f = 0; f < 16; f++) {
+    for (let f = 0; f < Math.round(16 * (BIO.rocks ?? 1)); f++) {
       let tries = 0;
       while (tries++ < 50) {
         const x = (this.rnd() - 0.5) * 1400, z = (this.rnd() - 0.5) * 1400;
@@ -675,14 +678,14 @@ export class World {
           const t = i - cnt / 2;
           const px = x + Math.sin(a) * t * 3.4 + (this.rnd() - 0.5) * 2;
           const pz = z + Math.cos(a) * t * 3.4 + (this.rnd() - 0.5) * 2;
-          items.push({ x: px, z: pz, s: 1.6 + this.rnd() * 2.2, v: Math.floor(this.rnd() * variants) });
+          items.push({ x: px, z: pz, s: (1.6 + this.rnd() * 2.2) * (BIO.rockBig ?? 1), v: Math.floor(this.rnd() * variants) });
         }
         this.occupy(x, z, cnt * 2);
         break;
       }
     }
     // Россыпь
-    for (let i = 0; i < 420; i++) {
+    for (let i = 0; i < Math.round(420 * (BIO.rocks ?? 1)); i++) {
       const x = (this.rnd() - 0.5) * 1500, z = (this.rnd() - 0.5) * 1500;
       const s = 0.3 + Math.pow(this.rnd(), 2.5) * 2.4;
       if (!this.isFree(x, z, s, 2)) continue;
@@ -730,12 +733,48 @@ export class World {
     return merge(parts);
   }
 
+  // Сосна: ствол и ярусы хвои (вершины красим от тёмной зелени к заснеженной)
+  makePineGeo(seed) {
+    const rnd = mulberry32(seed);
+    const parts = [];
+    const paint = (g, hex, hex2 = null) => {
+      const c1 = new THREE.Color(hex), c2 = new THREE.Color(hex2 ?? hex);
+      const p = g.attributes.position, col = new Float32Array(p.count * 3);
+      let lo = 1e9, hi = -1e9;
+      for (let i = 0; i < p.count; i++) { lo = Math.min(lo, p.getY(i)); hi = Math.max(hi, p.getY(i)); }
+      for (let i = 0; i < p.count; i++) {
+        const t = (p.getY(i) - lo) / Math.max(hi - lo, 1e-3), c = c1.clone().lerp(c2, t * t);
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      return g;
+    };
+    const trunk = new THREE.CylinderGeometry(0.16, 0.26, 2.2, 6);
+    trunk.translate(0, 0.8, 0);
+    parts.push(paint(strip(trunk), 0x4a3524));
+    const tiers = 5 + Math.floor(rnd() * 2);
+    for (let i = 0; i < tiers; i++) {
+      const k = i / (tiers - 1);
+      const r = (2.1 - k * 1.5) * (0.9 + rnd() * 0.2), h = 2.1 - k * 0.5;
+      const cone = new THREE.ConeGeometry(r, h, 8, 1);
+      cone.translate(0, 1.4 + i * 1.25, 0);
+      parts.push(paint(strip(cone), 0x1f4a2e, 0xe9f1f4));
+    }
+    return mergeGeometries(parts, false);
+  }
+
   buildTrees() {
+    const kind = BIO.trees ?? 'dead';
+    if (kind === 'none') return;
+    const pine = kind === 'pine';
     const variants = 3;
+    const mul = BIO.treeMul ?? 1;
+    const mat = pine ? (this.mats.pine ||= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })) : this.mats.tree;
+    if (!pine && BIO.treeCol) mat.color.setHex(BIO.treeCol);
     for (let v = 0; v < variants; v++) {
-      const geo = this.makeTreeGeo(100 + v * 17);
+      const geo = pine ? this.makePineGeo(100 + v * 17) : this.makeTreeGeo(100 + v * 17);
       const list = [];
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < Math.round(40 * mul); i++) {
         const x = (this.rnd() - 0.5) * 1480, z = (this.rnd() - 0.5) * 1480;
         if (!this.isFree(x, z, 2, 3)) continue;
         list.push({ x, z, s: 0.8 + this.rnd() * 0.8 });
@@ -747,7 +786,7 @@ export class World {
         this.addCircle(it.x, it.z, 0.35 * it.s, 4 * it.s);
         return { m: _m.clone() };
       });
-      this.addChunked(geo, this.mats.tree, items, { receive: false });
+      this.addChunked(geo, mat, items, { receive: false });
     }
   }
 
@@ -776,7 +815,7 @@ export class World {
           transformed.z += sway * 0.05 * position.y * position.y;`);
     };
     const extra = this.extraShrubs;
-    const N = QUALITY.shrubs + extra.length;
+    const N = Math.round(QUALITY.shrubs * (BIO.shrubs ?? 1)) + extra.length;
     const items = [];
     let k = 0;
     for (const e of extra) {
@@ -795,7 +834,7 @@ export class World {
       const s = 0.45 + this.rnd() * 1.0;
       _q.setFromAxisAngle(UP, this.rnd() * 6.28);
       _m.compose(_v.set(x, this.h(x, z) - 0.05, z), _q, _s.set(s, s * (0.7 + this.rnd() * 0.5), s));
-      items.push({ m: _m.clone(), color: new THREE.Color().setHSL(0.09 + this.rnd() * 0.04, 0.25 + this.rnd() * 0.2, 0.55 + this.rnd() * 0.25) });
+      items.push({ m: _m.clone(), color: BIO.shrubHSL ? new THREE.Color().setHSL(BIO.shrubHSL[0] + this.rnd() * 0.04, BIO.shrubHSL[1], BIO.shrubHSL[2] + this.rnd() * 0.12) : new THREE.Color().setHSL(0.09 + this.rnd() * 0.04, 0.25 + this.rnd() * 0.2, 0.55 + this.rnd() * 0.25) });
       k++;
     }
     this.addChunked(geo, mat, items, { cast: false });
@@ -883,7 +922,7 @@ export class World {
   }
 
   buildTumbleweeds() {
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < (BIO.tumble ?? 18); i++) {
       const o = this.addDynamic('tumbleweed', (this.rnd() - 0.5) * 300, (this.rnd() - 0.5) * 300, 0);
       o.flying = true;
       o.tumble = true;

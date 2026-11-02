@@ -5,7 +5,9 @@ import { WORLD_SIZE, HALF, QUALITY, WIND } from './config.js';
 import { smoothstep, lerp, clamp } from './noise.js';
 import { SAND_COMMON, SAND_FRAGMENT_COLOR, SAND_FRAGMENT_NORMAL, SAND_FRAGMENT_EMISSIVE } from './shaders/sand.js';
 
-const SAND = selectedMap().sand;
+const MAPDEF = selectedMap();
+const SAND = MAPDEF.sand;
+const BIO = MAPDEF.biome || {};
 
 export class Terrain {
   constructor(noise, track) {
@@ -90,7 +92,7 @@ export class Terrain {
     const bowl = pick(55, 200);
     if (bowl) this.sites.push((this.bowl = { ...bowl, type: 'bowl', r: 55, depth: 8 }));
     const oasis = pick(28, 180);
-    if (oasis) this.sites.push((this.oasis = { ...oasis, type: 'oasis', r: 28, depth: 3.2 }));
+    if (oasis) this.sites.push((this.oasis = { ...oasis, type: 'oasis', r: 28, depth: 3.2, lake: BIO.lake || 'oasis' }));
     if (this.oasis) this.oasis.water = this.oasis.base - this.oasis.depth * 0.62;
 
     for (let j = 0; j <= res; j++) {
@@ -151,10 +153,15 @@ export class Terrain {
     const ss = (t) => t * t * (3 - 2 * t);
     const prof = f < 0.72 ? ss(f / 0.72) : 1 - ss((f - 0.72) / 0.28);
     const amp = 15 * (0.35 + 0.65 * (nz.noise(x * 0.0016 + 4, z * 0.0016 - 2) * 0.5 + 0.5));
-    let h = prof * amp;
-    h += 16 * nz.fbm(x * 0.0011, z * 0.0011, 3);
+    let h = prof * amp * (BIO.dune ?? 1);
+    h += 16 * (BIO.hills ?? 1) * nz.fbm(x * 0.0011, z * 0.0011, 3);
     h += 2.2 * nz.noise(x * 0.011, z * 0.011);
     h += 0.5 * nz.noise(x * 0.04, z * 0.04);
+    if (BIO.terrace) {
+      // ступенчатые плато каньона
+      const t = BIO.terrace, k = h / t, f = k - Math.floor(k);
+      h = (Math.floor(k) + smoothstep(0.5, 0.88, f)) * t;
+    }
     return h;
   }
 

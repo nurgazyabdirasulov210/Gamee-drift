@@ -1,5 +1,6 @@
 // Эффекты колёс: следы, пылевые шлейфы, «петушиный хвост» песка в заносе, дым на трассе,
 // пламя импульса, кольцевая ударная волна пыли при приземлении.
+import { selectedMap } from './garage.js';
 import * as THREE from 'three';
 import { clamp } from './noise.js';
 import { WIND } from './config.js';
@@ -12,6 +13,11 @@ const SMOKE = [0.78, 0.74, 0.7];
 const FLAME = [4.2, 1.7, 0.5];            // HDR: ядро уходит в бело-жёлтый, блум подхватывает
 const EXHAUST = [0.66, 0.6, 0.54];
 const CHIP = [0.3, 0.2, 0.12];
+// цвет пыли и песчинок зависит от карты (снег — белый, пепел — тёмный)
+{
+  const d = selectedMap().biome?.dust;
+  if (d) for (let i = 0; i < 3; i++) { SAND[i] = d[i]; SAND_LIGHT[i] = Math.min(1, d[i] * 1.15 + 0.03); SAND_DARK[i] = d[i] * 0.8; CHIP[i] = d[i] * 0.45; }
+}
 
 // Параметры частиц — общие объекты, чтобы не выделять память на каждый выброс
 const O_DUST = { drag: 1.3, grav: -0.06 };

@@ -38,8 +38,11 @@ function pacejka(alpha, B, C) {
 export class Car {
   constructor(terrain, color = 0xf4f4f2) {
     this.terrain = terrain;
-    this.model = buildCarModel(color);
-    this.mesh = this.model.root;
+    this.kind = 'pickup';
+    this.model = buildCarModel(color, this.kind);
+    // постоянный контейнер: сам кузов можно менять на лету (гараж), фары и позиция остаются
+    this.mesh = new THREE.Group();
+    this.mesh.add(this.model.root);
 
     this.mass = 1450;
     this.inertia = 2500;
@@ -104,8 +107,23 @@ export class Car {
     this.updateVisual(0);
   }
 
+  // Сменить кузов (модель) на лету: колёса физики перепривязываются к новой модели
+  setBody(kind) {
+    if (kind === this.kind) return;
+    const old = this.model;
+    const color = old.paint.color.getHex(), glow = old.headMat.emissiveIntensity;
+    this.mesh.remove(old.root);
+    old.paint.dispose(); old.headMat.dispose(); old.tailMat.dispose();
+    this.kind = kind;
+    this.model = buildCarModel(color, kind);
+    this.model.headMat.emissiveIntensity = glow;
+    this.mesh.add(this.model.root);
+    this.wheels.forEach((w, i) => { w.pivot = this.model.wheels[i].pivot; w.spin = this.model.wheels[i].spin; w.susp = 0; });
+  }
+
   // Характеристики выбранной машины из гаража (множители к базовому джипу)
   setSpec(spec) {
+    if (spec.kind) this.setBody(spec.kind);
     this.spec = spec;
     this.mass = 1450 * spec.mass;
     this.inertia = 2500 * spec.mass;
@@ -398,9 +416,10 @@ export class Car {
     for (let i = 0; i < 4; i++) {
       const w = this.wheels[i];
       _v.set(w.world.x, w.ground, w.world.z).applyMatrix4(_mi);
-      let y = _v.y + this.R;
-      if (!this.grounded) y = this.R - 0.16;
-      y = clamp(y, this.R - 0.22, this.R + 0.2);
+      const wr = this.model.wheelR;
+      let y = _v.y + wr;
+      if (!this.grounded) y = wr - 0.16;
+      y = clamp(y, wr - 0.22, wr + 0.2);
       w.susp = damp(w.susp, y, 30, 1 / 60);
       w.pivot.position.y = w.susp;
       w.pivot.rotation.y = w.front ? this.delta : 0;

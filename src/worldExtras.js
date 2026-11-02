@@ -1,6 +1,7 @@
 // Дополнительные локации и объекты: дрифт-чаша, оазис с пальмами, брошенные машины, автобус,
 // заброшенная заправка, радиовышка, столовые горы, кактусы, ящики, указатели.
 import * as THREE from 'three';
+import { selectedMap } from './garage.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildCarModel } from './carModel.js';
 import { mulberry32, clamp } from './noise.js';
@@ -51,6 +52,8 @@ function signTexture(text, bg = '#d8b07a', fg = '#3a2412') {
   return t;
 }
 
+const BIO = selectedMap().biome || {};
+
 export function buildExtras(w) {
   const T = w.terrain;
   const rnd = mulberry32(9090);
@@ -85,30 +88,47 @@ export function buildExtras(w) {
     placeSign(w, b.x + Math.cos(0.4) * (R + 8), b.z + Math.sin(0.4) * (R + 8), -0.4 + Math.PI / 2, 'ДРИФТ-ЧАША');
   }
 
-  // ---------- Оазис ----------
+  // ---------- Оазис / ледяное озеро / лавовое озеро ----------
   if (T.oasis) {
-    const o = T.oasis;
-    const water = makeWater(w, o.r * 0.82);
+    const o = T.oasis, lake = o.lake || 'oasis';
+    const water = makeWater(w, o.r * 0.82, lake);
     water.position.set(o.x, o.water, o.z);
     w.scene.add(water);
-    for (let i = 0; i < 11; i++) {
-      const a = (i / 11) * Math.PI * 2 + rnd() * 0.4;
-      const r = o.r * (0.85 + rnd() * 0.45);
-      const x = o.x + Math.cos(a) * r, z = o.z + Math.sin(a) * r;
-      const palm = makePalm(w, 5 + Math.floor(rnd() * 1000));
-      const s = 0.8 + rnd() * 0.5;
-      palm.scale.setScalar(s);
-      w.place(palm, x, z, rnd() * 6.28, 0.1);
-      w.addCircle(x, z, 0.4 * s, 9 * s);
+    if (lake === 'oasis') {
+      for (let i = 0; i < 11; i++) {
+        const a = (i / 11) * Math.PI * 2 + rnd() * 0.4;
+        const r = o.r * (0.85 + rnd() * 0.45);
+        const x = o.x + Math.cos(a) * r, z = o.z + Math.sin(a) * r;
+        const palm = makePalm(w, 5 + Math.floor(rnd() * 1000));
+        const s = 0.8 + rnd() * 0.5;
+        palm.scale.setScalar(s);
+        w.place(palm, x, z, rnd() * 6.28, 0.1);
+        w.addCircle(x, z, 0.4 * s, 9 * s);
+      }
+      // тростник у воды
+      for (let i = 0; i < 40; i++) {
+        const a = rnd() * 6.28, r = o.r * (0.7 + rnd() * 0.25);
+        w.extraShrubs.push({ x: o.x + Math.cos(a) * r, z: o.z + Math.sin(a) * r, s: 0.9 + rnd() * 0.8, green: true });
+      }
+      w.place(makeTent(w), o.x + o.r * 1.5, o.z + 6, 1.2);
+      w.addBox(o.x + o.r * 1.5, o.z + 6, 2.2, 2.2, 1.2, 2.6);
     }
-    // тростник у воды
-    for (let i = 0; i < 40; i++) {
-      const a = rnd() * 6.28, r = o.r * (0.7 + rnd() * 0.25);
-      w.extraShrubs.push({ x: o.x + Math.cos(a) * r, z: o.z + Math.sin(a) * r, s: 0.9 + rnd() * 0.8, green: true });
+    placeSign(w, o.x + o.r * 1.8, o.z - 10, 0.6, BIO.lakeName || 'ОАЗИС');
+  }
+
+  // ---------- Вулкан ----------
+  if (BIO.volcano) {
+    for (let t2 = 0; t2 < 400; t2++) {
+      const a = rnd() * 6.28, r = 520 + rnd() * 120;
+      const x = clamp(Math.cos(a) * r, -HALF + 200, HALF - 200), z = clamp(Math.sin(a) * r, -HALF + 200, HALF - 200);
+      if (!w.isFree(x, z, 170, 20)) continue;
+      const v = makeVolcano(w, 190, 190);
+      w.place(v, x, z, rnd() * 6.28, 6);
+      w.addCircle(x, z, 150, 400);
+      w.landmarks.push({ type: 'mesa', x, z, r: 160 });
+      w.occupy(x, z, 190);
+      break;
     }
-    w.place(makeTent(w), o.x + o.r * 1.5, o.z + 6, 1.2);
-    w.addBox(o.x + o.r * 1.5, o.z + 6, 2.2, 2.2, 1.2, 2.6);
-    placeSign(w, o.x + o.r * 1.8, o.z - 10, 0.6, 'ОАЗИС');
   }
 
   // ---------- Брошенные ржавые машины ----------
@@ -180,13 +200,13 @@ export function buildExtras(w) {
   }
 
   // ---------- Столовые горы по краям ----------
-  for (let k = 0, t2 = 0; k < 6 && t2 < 3000; t2++) {
+  for (let k = 0, t2 = 0; k < (BIO.mesas ?? 6) && t2 < 4000; t2++) {
     const a = rnd() * 6.28;
-    const r = 560 + rnd() * 150;
+    const r = 470 + rnd() * 240;
     const x = clamp(Math.cos(a) * r, -HALF + 90, HALF - 90), z = clamp(Math.sin(a) * r, -HALF + 90, HALF - 90);
-    const rad = 28 + rnd() * 30;
+    const rad = (28 + rnd() * 30) * (BIO.mesaScale ?? 1);
     if (!w.isFree(x, z, rad, 15)) continue;
-    const mesa = makeMesa(w, rad, 22 + rnd() * 30, 50 + k * 7);
+    const mesa = makeMesa(w, rad, (22 + rnd() * 30) * (BIO.mesaScale ?? 1), 50 + k * 7);
     w.place(mesa, x, z, rnd() * 6.28, 2);
     w.addCircle(x, z, rad * 0.95, 80);
     w.landmarks.push({ type: 'mesa', x, z, r: rad });
@@ -198,7 +218,7 @@ export function buildExtras(w) {
   const cactusGeo = makeCactusGeo();
   const cMat = new THREE.MeshStandardMaterial({ color: 0x5f7a45, roughness: 0.85 });
   const list = [];
-  for (let i = 0; i < 260 && list.length < 140; i++) {
+  for (let i = 0; i < 260 && list.length < Math.round(140 * (BIO.cactus ?? 1)); i++) {
     const x = (rnd() - 0.5) * 1480, z = (rnd() - 0.5) * 1480;
     if (!w.isFree(x, z, 1, 3)) continue;
     list.push({ x, z, s: 0.7 + rnd() * 0.7, r: rnd() * 6.28 });
@@ -273,8 +293,13 @@ function makeLightMast(w) {
   return g;
 }
 
-function makeWater(w, r) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x1f6670, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.88 });
+function makeWater(w, r, kind = 'oasis') {
+  const lava = kind === 'lava', ice = kind === 'ice';
+  const mat = lava
+    ? new THREE.MeshStandardMaterial({ color: 0x1a0905, emissive: 0xff4a0e, emissiveIntensity: 1.5, roughness: 0.55, metalness: 0 })
+    : ice
+      ? new THREE.MeshStandardMaterial({ color: 0xa9d9ea, roughness: 0.07, metalness: 0.1, transparent: true, opacity: 0.93 })
+      : new THREE.MeshStandardMaterial({ color: 0x1f6670, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0.88 });
   const u = { uTime: { value: 0 } };
   w.waters.push(u);
   mat.onBeforeCompile = (sh) => {
@@ -282,20 +307,70 @@ function makeWater(w, r) {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    const wave = ice ? 0.0 : lava ? 0.03 : 0.06;
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying vec3 vWP;')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         vec2 p = vWP.xz;
         float t = uTime;
         vec2 gr = vec2(cos(p.x * 1.3 + t * 1.7) + cos(p.x * 0.7 - p.y * 0.9 + t * 1.1) * 0.6,
-                       cos(p.y * 1.5 - t * 1.4) + cos(p.y * 0.8 + p.x * 0.6 + t * 0.9) * 0.6) * 0.06;
+                       cos(p.y * 1.5 - t * 1.4) + cos(p.y * 0.8 + p.x * 0.6 + t * 0.9) * 0.6) * ${wave.toFixed(3)};
         normal = normalize((viewMatrix * vec4(normalize(vec3(-gr.x, 1.0, -gr.y)), 0.0)).xyz);`);
+    if (lava) {
+      // корка и раскалённые трещины: яркость течёт по поверхности
+      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        vec2 q = vWP.xz * 0.35;
+        float n1 = sin(q.x * 1.7 + uTime * 0.35) * sin(q.y * 1.3 - uTime * 0.28) + sin((q.x + q.y) * 2.3 + uTime * 0.5) * 0.5;
+        float crust = smoothstep(-0.2, 0.55, n1);
+        totalEmissiveRadiance *= mix(1.7, 0.18, crust);`);
+    }
   };
   const m = new THREE.Mesh(new THREE.CircleGeometry(r, 48), mat);
   m.rotation.x = -Math.PI / 2;
   m.receiveShadow = true;
   return m;
 }
+
+// Вулкан: вогнутый конус с рваными склонами, раскалённым кратером и потёками лавы
+function makeVolcano(w, rad, height) {
+  const n = w.noise;
+  const prof = [];
+  const N = 56;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N * 0.93;
+    prof.push(new THREE.Vector2(rad * Math.pow(1 - t / 0.93 * 0.86, 1.7) + rad * 0.02, t * height));
+  }
+  prof.push(new THREE.Vector2(rad * 0.15, height * 0.93), new THREE.Vector2(rad * 0.11, height * 0.88), new THREE.Vector2(0.01, height * 0.86));
+  const geo = new THREE.LatheGeometry(prof, 120);
+  const pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+  const c = new THREE.Color(), dark = new THREE.Color(0x1d1817), ash = new THREE.Color(0x4a3d36), hot = new THREE.Color(0xff5a14);
+  for (let i = 0; i < pos.count; i++) {
+    _v.fromBufferAttribute(pos, i);
+    const a = Math.atan2(_v.z, _v.x), yN = _v.y / height;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    // низкочастотная рябь по окружности (без швов: шум зависит от cos/sin угла)
+    const k = 1 + 0.14 * n.noise(ca * 2.2 + 3, sa * 2.2 + yN * 2) + 0.05 * n.noise(ca * 6, sa * 6 + yN * 7);
+    pos.setXYZ(i, _v.x * k, _v.y, _v.z * k);
+    const streak = Math.max(0, n.noise(ca * 4 + 11, sa * 4) - 0.05) * smoothex(0.3, 0.9, yN);
+    c.copy(dark).lerp(ash, 0.35 + 0.3 * n.noise(ca * 5, sa * 5 + yN * 5)).lerp(hot, Math.min(1, streak * 2.6));
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, emissive: 0xff3a08, emissiveIntensity: 0.0, side: THREE.DoubleSide }));
+  m.castShadow = true;
+  g.add(m);
+  // светящаяся лава в кратере
+  const lava = new THREE.Mesh(new THREE.CircleGeometry(rad * 0.11, 24),
+    new THREE.MeshStandardMaterial({ color: 0x1a0905, emissive: 0xff5412, emissiveIntensity: 3.4 }));
+  lava.rotation.x = -Math.PI / 2;
+  lava.position.y = height * 0.885;
+  g.add(lava);
+  return g;
+}
+function smoothex(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+const smoothstep01 = smoothex;
 
 function makePalm(w, seed) {
   const rnd = mulberry32(seed);
@@ -483,7 +558,8 @@ function makeMesa(w, rad, height, seed) {
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
   const c = new THREE.Color();
-  const dark = new THREE.Color(0x8a5a3a), light = new THREE.Color(0xc98c5a), band = new THREE.Color(0xa86a42);
+  const mc = BIO.mesaCols || [0x8a5a3a, 0xc98c5a, 0xa86a42];
+  const dark = new THREE.Color(mc[0]), light = new THREE.Color(mc[1]), band = new THREE.Color(mc[2]);
   for (let i = 0; i < pos.count; i++) {
     _v.fromBufferAttribute(pos, i);
     const a = Math.atan2(_v.z, _v.x);
@@ -507,7 +583,7 @@ function makeMesa(w, rad, height, seed) {
   // осыпь у подножия
   const scree = new THREE.CylinderGeometry(rad * 1.05, rad * 1.35, height * 0.18, 48, 1, true);
   scree.translate(0, height * 0.09, 0);
-  g.add(new THREE.Mesh(scree, new THREE.MeshStandardMaterial({ color: 0xc08a58, roughness: 1 })));
+  g.add(new THREE.Mesh(scree, new THREE.MeshStandardMaterial({ color: BIO.screeCol ?? 0xc08a58, roughness: 1 })));
   return g;
 }
 

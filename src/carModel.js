@@ -438,12 +438,257 @@ function bodyGeometry() {
   return bodyGeo;
 }
 
-export function buildCarModel(color = 0xf4f4f2) {
+
+// ---------- Дополнительные кузова ----------
+// Профиль кузова (z, y) с арками под колёса, как у пикапа; w — ширина, b — фаска
+function arcProfile(pts, archR = 0.53) {
+  const sh = new THREE.Shape();
+  sh.moveTo(...pts.rear[0]);
+  for (let i = 1; i < pts.rear.length; i++) sh.lineTo(...pts.rear[i]);
+  for (const p of pts.top) sh.lineTo(...p);
+  if (pts.nose) sh.quadraticCurveTo(...pts.nose);
+  for (const p of pts.front) sh.lineTo(...p);
+  sh.lineTo(1.4 + archR, 0.44);
+  sh.absarc(1.4, 0.44, archR, 0, Math.PI, false);
+  sh.lineTo(-1.4 + archR, 0.44);
+  sh.absarc(-1.4, 0.44, archR, 0, Math.PI, false);
+  sh.lineTo(...pts.rear[0]);
+  return sh;
+}
+
+function flares(K, x, r = 0.58, hgt = 0.44) {
+  for (const sx of [-1, 1]) for (const az of [1.4, -1.4]) {
+    K.add('trim', xf(new THREE.TorusGeometry(r, 0.05, 6, 18, Math.PI), sx * x, hgt, az, 0, Math.PI / 2));
+  }
+}
+
+// Хэтчбек/купе: параметры определяют силуэт, оптику и обвес
+function hatchBody(o) {
+  const K = new Kit();
+  const hw = o.width / 2;
+  K.add('paint', extrudeSide(arcProfile({
+    rear: [[-2.1, 0.46], [-2.14, 0.62], [-2.1, o.belt - 0.06]],
+    top: [[-1.5, o.belt], [0.9, o.belt], [1.92, o.belt - 0.13]],
+    nose: [2.16, o.belt - 0.19, 2.16, 0.62],
+    front: [[2.14, 0.5], [1.94, 0.44]],
+  }), o.width, 0.05));
+  // Кабина
+  const g = new THREE.Shape();
+  g.moveTo(o.aZ1, o.belt); g.lineTo(o.aZ2, o.roofY); g.lineTo(o.cZ2, o.roofY); g.lineTo(o.cZ1, o.belt); g.lineTo(o.aZ1, o.belt);
+  K.add('glass', extrudeSide(g, o.width - 0.2, 0.03));
+  const rl = o.aZ2 - o.cZ2;
+  K.box('paint', o.width - 0.16, 0.05, rl + 0.06, 0, o.roofY + 0.012, (o.aZ2 + o.cZ2) / 2);
+  const aA = Math.atan2(o.aZ1 - o.aZ2, o.roofY - o.belt), aL = Math.hypot(o.aZ1 - o.aZ2, o.roofY - o.belt);
+  const cA = Math.atan2(o.cZ2 - o.cZ1, o.roofY - o.belt), cL = Math.hypot(o.cZ2 - o.cZ1, o.roofY - o.belt);
+  for (const sx of [-1, 1]) {
+    K.box('paint', 0.06, aL, 0.09, sx * (hw - 0.1), (o.belt + o.roofY) / 2, (o.aZ1 + o.aZ2) / 2, -aA);
+    K.box('paint', 0.06, cL, 0.11, sx * (hw - 0.1), (o.belt + o.roofY) / 2, (o.cZ1 + o.cZ2) / 2, cA);
+    K.box('trim', 0.012, o.roofY - o.belt - 0.04, 0.07, sx * (hw - 0.07), (o.belt + o.roofY) / 2, (o.aZ2 + o.cZ2) / 2 + 0.1); // средняя стойка
+    // двери и ручки, зеркала
+    for (const z of [0.62, -0.1, o.doors4 ? -0.78 : -0.7]) K.box('seam', 0.006, o.belt - 0.5, 0.012, sx * (hw + 0.002), 0.75, z);
+    for (const z of [0.25, -0.35]) K.box('trim', 0.022, 0.035, 0.12, sx * (hw + 0.006), o.belt - 0.12, z);
+    K.box('paint', 0.18, 0.11, 0.08, sx * (hw + 0.1), o.belt + 0.12, o.aZ1 - 0.2);
+    K.box('trim', 0.12, 0.03, 0.04, sx * (hw + 0.02), o.belt + 0.08, o.aZ1 - 0.18);
+    // боковые пороги — контрастный низ («панда»)
+    if (o.panda) K.box('trim', 0.025, 0.2, 2.9, sx * (hw + 0.006), 0.58, 0);
+    else K.box('trim', 0.035, 0.07, 2.6, sx * (hw + 0.012), 0.5, 0);
+    K.box('amber', 0.01, 0.04, 0.09, sx * (hw + 0.004), 0.78, 2.0);
+    K.box('red', 0.01, 0.04, 0.09, sx * (hw + 0.004), 0.82, -2.0);
+  }
+  flares(K, hw + 0.04);
+  for (const az of [1.4, -1.4]) K.add('liner', xf(flip(new THREE.CylinderGeometry(0.495, 0.495, o.width + 0.06, 12, 1, true, Math.PI, Math.PI)), 0, 0.44, az, 0, 0, -Math.PI / 2));
+  // Капот: вставки, воздухозаборник
+  K.add('paint', xf(slab(o.width - 0.4, 0.04, 1.25, 0.015), 0, o.belt + 0.005, 1.35, 0.06));
+  if (o.scoop) {
+    K.box('seam', 0.55, 0.05, 0.4, 0, o.belt + 0.07, 1.25);
+    K.box('trim', 0.6, 0.04, 0.08, 0, o.belt + 0.1, 1.05);
+  } else for (const sx of [-1, 1]) K.box('seam', 0.3, 0.012, 0.22, sx * 0.3, o.belt + 0.03, 1.4, 0.06);
+  // Перед
+  K.add('trim', xf(slab(o.width + 0.02, 0.22, 0.2, 0.03), 0, 0.55, 2.1));
+  K.box('seam', 0.7, 0.13, 0.04, 0, 0.58, 2.2);
+  K.add('chrome', xf(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 10), 0, 0.5, 2.215, Math.PI / 2));
+  if (o.popup) {
+    for (const sx of [-1, 1]) {
+      K.box('trim', 0.4, 0.13, 0.06, sx * 0.55, o.belt - 0.08, 2.0);
+      K.box('head', 0.32, 0.09, 0.03, sx * 0.55, o.belt - 0.08, 2.03);
+    }
+    K.box('trim', 1.1, 0.08, 0.04, 0, o.belt - 0.14, 2.12);
+  } else {
+    for (const sx of [-1, 1]) {
+      K.box('trim', 0.4, 0.14, 0.06, sx * 0.62, o.belt - 0.1, 2.0);
+      K.box('head', 0.34, 0.1, 0.02, sx * 0.62, o.belt - 0.1, 2.035);
+      K.add('trim', xf(new THREE.CylinderGeometry(0.075, 0.075, 0.02, 14), sx * 0.34, 0.6, 2.2, Math.PI / 2));
+      K.add('head', xf(new THREE.CylinderGeometry(0.058, 0.058, 0.02, 14), sx * 0.34, 0.6, 2.21, Math.PI / 2));
+    }
+    if (o.pods) for (let i = 0; i < 4; i++) {
+      K.add('trim', xf(new THREE.CylinderGeometry(0.11, 0.11, 0.07, 14), -0.45 + i * 0.3, o.belt - 0.28, 2.2, Math.PI / 2));
+      K.add('head', xf(new THREE.CylinderGeometry(0.085, 0.085, 0.02, 14), -0.45 + i * 0.3, o.belt - 0.28, 2.24, Math.PI / 2));
+    }
+  }
+  // Зад
+  K.add('trim', xf(slab(o.width + 0.02, 0.2, 0.2, 0.03), 0, 0.55, -2.1));
+  K.box('tail', o.width - 0.3, 0.14, 0.03, 0, o.belt - 0.14, -2.15);
+  K.box('seam', o.width - 0.3, 0.012, 0.01, 0, o.belt - 0.14, -2.162);
+  K.box('plate', 0.5, 0.11, 0.02, 0, 0.62, -2.2);
+  for (let i = 0; i < 6; i++) K.box('seam', 0.034, 0.055, 0.004, 0.2 - i * 0.08, 0.615, -2.212);
+  K.add('chrome', xf(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 14), 0.5, 0.45, -2.2, Math.PI / 2));
+  // Спойлер
+  if (o.wing === 'duck') K.add('paint', xf(slab(o.width - 0.2, 0.05, 0.3, 0.015), 0, o.belt + 0.05, -2.0, -0.12));
+  if (o.wing === 'big') {
+    for (const sx of [-1, 1]) {
+      K.box('trim', 0.05, 0.5, 0.06, sx * 0.62, o.belt + 0.25, -1.95);
+      K.box('paint', 0.03, 0.3, 0.5, sx * 0.92, o.belt + 0.5, -2.0);
+    }
+    K.add('trim', xf(slab(1.84, 0.045, 0.5, 0.015), 0, o.belt + 0.5, -2.0, -0.08));
+  }
+  // Крыша: воздухозаборник, полосы
+  if (o.roofScoop) { K.box('seam', 0.3, 0.05, 0.3, 0, o.roofY + 0.07, 0.05); K.box('trim', 0.32, 0.03, 0.06, 0, o.roofY + 0.095, 0.2); }
+  if (o.stripes) {
+    K.box('trim', 0.34, 0.006, 1.2, 0, o.belt + 0.06, 1.4, 0.06);
+    K.box('trim', 0.34, 0.006, 1.2, 0, o.roofY + 0.04, -0.03);
+    K.box('trim', 0.34, 0.006, 0.6, 0, o.belt + 0.02, -1.7);
+  }
+  K.box('tail', 0.26, 0.025, 0.025, 0, o.roofY - 0.1, o.cZ2 - 0.2); // третий стоп
+  return K.build();
+}
+
+function sportsBody() {
+  const K = new Kit();
+  K.add('paint', extrudeSide(arcProfile({
+    rear: [[-2.18, 0.42], [-2.22, 0.7], [-2.12, 0.98]],
+    top: [[-1.4, 1.03], [-0.2, 1.05], [1.1, 0.86]],
+    nose: [2.22, 0.66, 2.26, 0.5],
+    front: [[2.14, 0.4], [1.94, 0.4]],
+  }, 0.5), 1.96, 0.06));
+  const g = new THREE.Shape();
+  g.moveTo(0.95, 0.93); g.lineTo(0.4, 1.3); g.lineTo(-0.1, 1.34); g.lineTo(-0.95, 1.12); g.lineTo(-1.35, 1.03); g.lineTo(0.95, 0.93);
+  K.add('glass', extrudeSide(g, 1.5, 0.03));
+  K.box('paint', 1.46, 0.045, 0.52, 0, 1.352, 0.15);
+  for (const sx of [-1, 1]) {
+    K.box('paint', 0.07, 0.62, 0.09, sx * 0.76, 1.12, 0.68, -0.8);
+    K.box('seam', 0.01, 0.1, 0.6, sx * 0.985, 0.72, -0.7);           // боковые воздухозаборники
+    K.box('seam', 0.01, 0.1, 0.12, sx * 0.985, 0.72, 0.55);
+    K.box('trim', 0.02, 0.05, 2.7, sx * 0.99, 0.46, 0);
+    K.box('paint', 0.16, 0.1, 0.08, sx * 1.04, 1.05, 0.95);
+    K.box('amber', 0.01, 0.04, 0.09, sx * 0.99, 0.7, 2.0);
+    // фары-«щели»
+    K.box('trim', 0.5, 0.07, 0.07, sx * 0.62, 0.72, 2.12, 0.05, sx * 0.15);
+    K.box('head', 0.42, 0.04, 0.03, sx * 0.62, 0.72, 2.16, 0.05, sx * 0.15);
+    // антикрыло: стойки и пластины
+    K.box('trim', 0.05, 0.42, 0.07, sx * 0.55, 1.2, -1.95);
+    K.box('paint', 0.03, 0.26, 0.55, sx * 0.93, 1.48, -2.0);
+    // выхлопы
+    K.add('chrome', xf(new THREE.CylinderGeometry(0.055, 0.055, 0.12, 14), sx * 0.3, 0.55, -2.24, Math.PI / 2));
+    K.add('chrome', xf(new THREE.CylinderGeometry(0.055, 0.055, 0.12, 14), sx * 0.52, 0.55, -2.24, Math.PI / 2));
+  }
+  flares(K, 1.0, 0.55, 0.42);
+  for (const az of [1.4, -1.4]) K.add('liner', xf(flip(new THREE.CylinderGeometry(0.485, 0.485, 2.0, 12, 1, true, Math.PI, Math.PI)), 0, 0.44, az, 0, 0, -Math.PI / 2));
+  K.add('trim', xf(slab(2.0, 0.05, 0.5, 0.02), 0, 0.4, 2.2));        // сплиттер
+  K.add('trim', xf(slab(2.0, 0.07, 0.6, 0.02), 0, 0.42, -2.1));      // диффузор
+  K.box('seam', 0.9, 0.1, 0.04, 0, 0.6, 2.24);                       // воздухозаборник
+  K.box('seam', 0.34, 0.012, 0.5, 0, 0.88, 1.55, 0.18);              // вентиляция капота
+  K.box('seam', 0.5, 0.012, 0.3, 0, 0.99, -1.5);
+  K.box('tail', 1.66, 0.07, 0.03, 0, 0.9, -2.24);
+  K.add('trim', xf(slab(1.9, 0.045, 0.55, 0.015), 0, 1.5, -2.0, -0.07)); // крыло
+  K.box('plate', 0.5, 0.1, 0.02, 0, 0.7, -2.26);
+  return K.build();
+}
+
+function buggyBody() {
+  const K = new Kit();
+  // Рама-«сковорода», носовая и моторная части
+  K.add('paint', xf(slab(1.3, 0.1, 3.5, 0.03), 0, 0.5, 0));
+  K.add('paint', xf(slab(1.16, 0.3, 1.1, 0.06), 0, 0.72, 1.55, 0.18));
+  K.add('paint', xf(slab(1.1, 0.26, 1.2, 0.05), 0, 0.92, -1.55, -0.1));
+  K.box('seam', 0.5, 0.05, 0.3, 0, 1.06, -1.4);                      // радиатор/жалюзи
+  for (let i = 0; i < 4; i++) K.box('trim', 0.46, 0.012, 0.03, 0, 1.075, -1.5 + i * 0.1);
+  K.add('chrome', xf(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 12), -0.35, 0.78, -2.15, Math.PI / 2));
+  K.add('chrome', xf(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 12), 0.35, 0.78, -2.15, Math.PI / 2));
+  // Сиденья
+  for (const sx of [-0.3, 0.3]) {
+    K.add('liner', xf(slab(0.5, 0.12, 0.5, 0.04), sx, 0.7, 0.05));
+    K.add('liner', xf(slab(0.5, 0.62, 0.12, 0.04), sx, 1.0, -0.22, -0.15));
+    K.box('trim', 0.14, 0.2, 0.06, sx, 1.4, -0.28);
+  }
+  K.box('trim', 0.3, 0.3, 0.05, 0, 1.0, 0.7, -0.5);                  // приборная панель
+  K.add('trim', xf(new THREE.TorusGeometry(0.15, 0.02, 6, 16), 0, 1.15, 0.58, -0.6));
+  // Каркас безопасности
+  const tubeR = 0.035;
+  const T = (pts) => K.add('trim', tube(pts, tubeR, pts.length * 6));
+  for (const sx of [-1, 1]) {
+    T([[sx * 0.6, 0.55, 0.85], [sx * 0.6, 1.1, 0.75], [sx * 0.55, 1.62, 0.2]]);               // передняя стойка
+    T([[sx * 0.6, 0.55, -0.55], [sx * 0.6, 1.2, -0.52], [sx * 0.5, 1.64, -0.3]]);             // задняя стойка
+    T([[sx * 0.55, 1.62, 0.2], [sx * 0.52, 1.66, -0.05], [sx * 0.5, 1.64, -0.3]]);            // верхняя продольная
+    T([[sx * 0.6, 0.95, 0.75], [sx * 0.62, 0.95, 0.1], [sx * 0.6, 0.95, -0.53]]);             // боковая защита
+    T([[sx * 0.5, 1.64, -0.3], [sx * 0.45, 1.3, -1.0], [sx * 0.45, 0.95, -1.5]]);             // подкос к мотору
+    K.add('trim', cylBetween(new THREE.Vector3(sx * 0.6, 0.55, 0.85), new THREE.Vector3(sx * 0.45, 0.7, 1.7), tubeR));
+    K.box('head', 0.22, 0.14, 0.04, sx * 0.4, 0.88, 2.12);            // фары в носу
+    K.box('trim', 0.28, 0.2, 0.05, sx * 0.4, 0.88, 2.095);
+    K.box('red', 0.01, 0.04, 0.09, sx * 0.66, 0.7, 2.0);
+    K.box('tail', 0.2, 0.1, 0.04, sx * 0.42, 0.95, -2.18);            // задние фонари
+    K.box('paint', 0.34, 0.05, 0.9, sx * 0.97, 0.88, 1.4, 0, 0, sx * 0.08);   // передние крылья
+    K.box('paint', 0.34, 0.05, 0.9, sx * 0.97, 0.9, -1.4, 0, 0, sx * 0.08);
+    K.box('trim', 0.04, 0.12, 0.9, sx * 1.12, 0.84, 1.4);
+    K.box('trim', 0.04, 0.12, 0.9, sx * 1.12, 0.86, -1.4);
+  }
+  T([[-0.55, 1.62, 0.2], [0, 1.68, 0.2], [0.55, 1.62, 0.2]]);          // верхняя поперечная спереди
+  T([[-0.5, 1.64, -0.3], [0, 1.68, -0.3], [0.5, 1.64, -0.3]]);
+  T([[-0.6, 1.1, 0.75], [0, 1.15, 0.78], [0.6, 1.1, 0.75]]);
+  // Светодиодная балка на каркасе
+  K.box('trim', 1.0, 0.09, 0.09, 0, 1.72, 0.2);
+  for (let i = 0; i < 5; i++) K.box('head', 0.15, 0.06, 0.012, -0.4 + i * 0.2, 1.72, 0.25);
+  // Бамперы-трубы и защита
+  K.add('chrome', tube([[-0.55, 0.7, 2.0], [-0.5, 0.65, 2.25], [0.5, 0.65, 2.25], [0.55, 0.7, 2.0]], 0.03, 20));
+  K.add('chrome', tube([[-0.5, 0.75, -2.05], [-0.4, 0.62, -2.3], [0.4, 0.62, -2.3], [0.5, 0.75, -2.05]], 0.03, 20));
+  K.box('plate', 0.4, 0.1, 0.02, 0, 0.64, -2.2);
+  // Запаска на корме
+  K.add('palRaw', xf(wheelGeometry(0.3, 0.2, 1).clone(), 0, 1.05, -2.0, Math.PI / 2, 0, 0));
+  return K.build();
+}
+
+function monsterExtras() {
+  const K = new Kit();
+  K.add('liner', xf(slab(1.5, 0.36, 3.0, 0.05), 0, 0.5, 0));
+  for (const sx of [-1, 1]) for (const az of [1.4, -1.4]) {
+    K.add('chrome', cylBetween(new THREE.Vector3(sx * 0.35, 0.72, az), new THREE.Vector3(sx * 0.9, 0.5, az), 0.04));
+    K.add('red', xf(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 8), sx * 0.7, 0.62, az));
+  }
+  return K.build().pal;
+}
+
+const bodyCache = {};
+const BODIES = {
+  pickup: { geo: () => bodyGeometry(), wheelX: 0.9 },
+  monster: { geo: () => bodyGeometry(), lift: 0.38, wheelR: 0.64, wheelW: 0.46, wheelX: 1.0, extra: monsterExtras },
+  coupe: {
+    geo: () => hatchBody({ width: 1.74, belt: 0.98, roofY: 1.45, aZ1: 1.0, aZ2: 0.48, cZ2: -0.52, cZ1: -1.5, popup: true, wing: 'duck', panda: true }),
+    wheelX: 0.86,
+  },
+  rally: {
+    geo: () => hatchBody({ width: 1.84, belt: 1.04, roofY: 1.6, aZ1: 1.05, aZ2: 0.5, cZ2: -1.0, cZ1: -1.55, doors4: true, wing: 'big', scoop: true, roofScoop: true, stripes: true, pods: true }),
+    wheelX: 0.9,
+  },
+  sports: { geo: sportsBody, wheelX: 0.92 },
+  buggy: { geo: buggyBody, wheelX: 0.98, wheelW: 0.4 },
+};
+function bodyFor(kind) {
+  const d = BODIES[kind] || BODIES.pickup;
+  if (!d.cache) d.cache = d.geo();
+  if (d.extra && !d.extraGeo) d.extraGeo = d.extra();
+  return d;
+}
+
+export function buildCarModel(color = 0xf4f4f2, kind = 'pickup') {
   const M = sharedMats();
-  const G = bodyGeometry();
+  const def = bodyFor(kind);
+  const G = def.cache;
+  const wr = def.wheelR || 0.42, ww = def.wheelW || 0.33, wx = def.wheelX || 0.9;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
+  const inner = new THREE.Group();
+  inner.position.y = def.lift || 0;
+  body.add(inner);
 
   const paint = new THREE.MeshPhysicalMaterial({
     color, metalness: 0.35, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.06,
@@ -453,26 +698,27 @@ export function buildCarModel(color = 0xf4f4f2) {
 
   const paintMesh = new THREE.Mesh(G.paint, paint);
   paintMesh.receiveShadow = true;
-  body.add(paintMesh);
-  body.add(new THREE.Mesh(G.glass, M.glass));
-  body.add(new THREE.Mesh(G.pal, M.pal));
-  body.add(new THREE.Mesh(G.head, headMat));
-  body.add(new THREE.Mesh(G.tail, tailMat));
+  inner.add(paintMesh);
+  if (G.glass) inner.add(new THREE.Mesh(G.glass, M.glass));
+  if (G.pal) inner.add(new THREE.Mesh(G.pal, M.pal));
+  if (G.head) inner.add(new THREE.Mesh(G.head, headMat));
+  if (G.tail) inner.add(new THREE.Mesh(G.tail, tailMat));
+  if (def.extraGeo) inner.add(new THREE.Mesh(def.extraGeo, M.pal));
 
   // Колёса
   const wheelPos = [
-    [0.9, 1.4], [-0.9, 1.4], // передние (лево, право)
-    [0.9, -1.4], [-0.9, -1.4],
+    [wx, 1.4], [-wx, 1.4], // передние (лево, право)
+    [wx, -1.4], [-wx, -1.4],
   ];
   const wheels = wheelPos.map(([x, z], i) => {
     const pivot = new THREE.Group();
-    pivot.position.set(x, 0.42, z);
-    const spin = buildWheel(0.42, 0.33, Math.sign(x));
+    pivot.position.set(x, wr, z);
+    const spin = buildWheel(wr, ww, Math.sign(x));
     pivot.add(spin);
     root.add(pivot);
     return { pivot, spin, x, z, front: i < 2 };
   });
 
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { root, body, wheels, tailMat, headMat, paint };
+  return { root, body, wheels, tailMat, headMat, paint, wheelR: wr, kind };
 }

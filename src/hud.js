@@ -49,7 +49,7 @@ export class HUD {
       const x = (l.x + HALF) * k, y = (l.z + HALF) * k;
       if (l.type === 'mesa') { g.fillStyle = 'rgba(140,85,50,0.9)'; g.beginPath(); g.arc(x, y, l.r * k, 0, 7); g.fill(); }
       else if (l.type === 'bowl') { g.strokeStyle = 'rgba(90,55,30,0.9)'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, l.r * k, 0, 7); g.stroke(); }
-      else if (l.type === 'oasis') { g.fillStyle = 'rgba(40,120,130,0.95)'; g.beginPath(); g.arc(x, y, l.r * k * 0.8, 0, 7); g.fill(); }
+      else if (l.type === 'oasis') { g.fillStyle = l.lake === 'lava' ? 'rgba(235,90,25,0.95)' : l.lake === 'ice' ? 'rgba(170,215,235,0.95)' : 'rgba(40,120,130,0.95)'; g.beginPath(); g.arc(x, y, l.r * k * 0.8, 0, 7); g.fill(); }
       else if (l.type !== 'wreck') { g.fillStyle = 'rgba(60,40,25,0.85)'; g.fillRect(x - 2.5, y - 2.5, 5, 5); }
     }
     this.mapBg = bg;
