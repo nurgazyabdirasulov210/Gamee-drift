@@ -99,6 +99,7 @@ export class Car {
     this.delta = 0;
     this.grounded = true;
     this.groundH = this.pos.y;
+    this.gvS = 0;
     this.up.set(0, 1, 0);
     this.pitch = this.roll = this.heave = 0;
     this.pitchV = this.rollV = this.heaveV = 0;
@@ -161,13 +162,29 @@ export class Car {
     _n.set(-fx * gzs - lx * gxs, 1, -fz * gzs - lz * gxs).normalize();
 
     // --- Вертикаль: следование рельефу, отрыв на гребнях, приземление ---
+    // сглаженная вертикальная скорость рельефа под машиной (без «ступенек» сетки высот)
+    this.gvS = damp(this.gvS ?? groundVy, groundVy, 30, dt);
     if (this.grounded) {
       const vyFree = this.vel.y - AIR_G * dt;
-      if (vyFree > groundVy + 2.6 || (input.jump && this.jumpCd <= 0)) {
+      // Отрыв на гребне: если по баллистике через τ машина окажется выше земли впереди,
+      // значит склон уходит вниз быстрее, чем тянет гравитация (v²·кривизна > g) — машина летит.
+      let crest = false;
+      const hs = Math.hypot(this.vel.x, this.vel.z);
+      if (hs > 9) {
+        const gNow = t.getHeight(this.pos.x, this.pos.z);
+        const test = (tau) => {
+          const gAhead = t.getHeight(this.pos.x + this.vel.x * tau, this.pos.z + this.vel.z * tau);
+          return gNow + this.gvS * tau - 0.5 * AIR_G * tau * tau - gAhead;
+        };
+        // две точки впереди: ближняя ловит сам гребень, дальняя отсекает мелкую рябь и стыки сетки
+        crest = test(0.12) > 0.1 && test(0.3) > 0.35;
+      }
+      if (crest || vyFree > groundVy + 2.6 || (input.jump && this.jumpCd <= 0)) {
         this.grounded = false;
         this.airTime = 0;
         this.airRot = 0;
-        this.vel.y = Math.max(vyFree, groundVy);
+        this.vel.y = Math.max(vyFree, groundVy, crest ? this.gvS : -1e9);
+        this.airLock = crest ? 0.12 : 0;
         if (input.jump && this.jumpCd <= 0) {
           this.vel.y = Math.max(this.vel.y, 0) + 7.2;
           this.jumpCd = 1.1;
@@ -183,7 +200,12 @@ export class Car {
       this.airRot += Math.abs(this.yawRate) * dt;
       this.vel.y -= AIR_G * dt;
       this.pos.y += this.vel.y * dt;
-      if (this.pos.y <= gH) {
+      this.airLock = (this.airLock || 0) - dt;
+      if (this.pos.y <= gH && this.airLock > 0 && this.vel.y - groundVy > -3) {
+        // сразу после отрыва с гребня не «прилипаем» обратно: скользим над рельефом, пока он уходит вниз
+        this.pos.y = gH;
+        this.vel.y = Math.max(this.vel.y, groundVy);
+      } else if (this.pos.y <= gH) {
         const impact = groundVy - this.vel.y;
         this.pos.y = gH;
         this.vel.y = groundVy;

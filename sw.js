@@ -1,6 +1,6 @@
 // Service worker: игра целиком кэшируется и работает без интернета.
 // При обновлении игры поменяйте VERSION, чтобы телефоны скачали новые файлы.
-const VERSION = 'dd-v12';
+const VERSION = 'dd-v13';
 const FILES = [
   './',
   "./icons/apple-touch-icon.png",
